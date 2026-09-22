@@ -33,6 +33,31 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
+// ── Response Compression (JSON responses are often very compressible) ──────────
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+{
+    options.Level = System.IO.Compression.CompressionLevel.Optimal;
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+{
+    options.Level = System.IO.Compression.CompressionLevel.Optimal;
+});
+
+// ── Output Caching ─────────────────────────────────────────────────────────────
+builder.Services.AddOutputCache();
+
+// ── Memory Cache (already present, just keeping) ──────────────────────────────
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = 1024; // max 1024 entries
+});
+
 // System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -61,8 +86,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(10),
                 errorCodesToAdd: null);
+            sqlOptions.CommandTimeout(30);
         });
     options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
+    options.EnableDetailedErrors(builder.Environment.IsDevelopment());
 });
 
 
@@ -185,10 +213,8 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IShiftFeedbackService, ShiftFeedbackService>();
 builder.Services.AddScoped<IPayrollSuggestionService, PayrollSuggestionService>();
 
-// SignalR
+// SignalR (registered once, used for both NotificationHub and DeviceHub)
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<IDictionary<string, string>>(opts => new Dictionary<string, string>());
-builder.Services.AddSingleton<IDictionary<string, long>>(opts => new Dictionary<string, long>());
 
 
 // Signal & Monitor Services for Reservation
@@ -214,9 +240,6 @@ builder.Services.AddSingleton(new PayOSClient(
 
 // Payment Service
 builder.Services.AddScoped<IPaymentService, PaymentService>();
-
-
-builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>
 {
@@ -305,9 +328,10 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 
+app.UseResponseCompression(); // Compress responses early (Brotli + Gzip)
 app.UseCors("AllowAll");
-
 app.UseRateLimiter();
+app.UseOutputCache(); // Enable output caching
 
 if (app.Environment.IsDevelopment())
 {
@@ -320,7 +344,7 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers();
+app.MapControllers().CacheOutput(); // Apply output cache to all controller routes
 app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub");
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
