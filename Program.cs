@@ -25,7 +25,6 @@ using System.Text;
 using PayOS;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
-using System.IO.Compression;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,22 +32,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
-
-// ── Response Compression (JSON responses are often very compressible) ──────────
-builder.Services.AddResponseCompression(options =>
-{
-    options.EnableForHttps = true;
-    options.Providers.Add<BrotliCompressionProvider>();
-    options.Providers.Add<GzipCompressionProvider>();
-});
-builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
-{
-    options.Level = System.IO.Compression.CompressionLevel.Optimal;
-});
-builder.Services.Configure<GzipCompressionProviderOptions>(options =>
-{
-    options.Level = System.IO.Compression.CompressionLevel.Optimal;
-});
 
 // ── Output Caching ─────────────────────────────────────────────────────────────
 builder.Services.AddOutputCache();
@@ -329,7 +312,6 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 
-app.UseResponseCompression(); // Compress responses early (Brotli + Gzip)
 app.UseCors("AllowAll");
 app.UseRateLimiter();
 app.UseOutputCache(); // Enable output caching
