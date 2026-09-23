@@ -29,6 +29,11 @@ using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Railway sets $PORT env variable — use it, fallback to 8080 for local dev
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+Console.WriteLine($"[Startup] Binding to port {port}");
+builder.WebHost.UseUrls($"http://+:{port}");
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -319,12 +324,6 @@ builder.Services.AddControllers()
 
 var app = builder.Build();
 
-// Railway sets $PORT env variable — use it, fallback to 8080 for local dev
-var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-builder.WebHost.UseUrls($"http://+:{port}");
-
-app.UseExceptionHandler();
-
 // Enable CORS early so preflight OPTIONS works for SignalR
 app.UseCors("AllowAll");
 app.UseRateLimiter();
@@ -349,7 +348,9 @@ try
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
+    Console.WriteLine("[Startup] Running EF Core migrations...");
     await dbContext.Database.MigrateAsync();
+    Console.WriteLine("[Startup] EF Core migrations completed.");
 }
 catch (Exception ex)
 {
@@ -361,7 +362,9 @@ if (!args.Contains("--skip-legacy-seed"))
 {
     try
     {
+        Console.WriteLine("[Startup] Running LegacyBatchSeeder...");
         await MenuGoBE.Data.LegacyBatchSeeder.SeedLegacyBatchesAsync(app.Services);
+        Console.WriteLine("[Startup] LegacyBatchSeeder completed.");
     }
     catch (Exception ex)
     {
@@ -370,5 +373,26 @@ if (!args.Contains("--skip-legacy-seed"))
     }
 }
 
-app.Logger.LogInformation("Application starting on port {Port}", port);
-app.Run();
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    Console.WriteLine($"[Startup] ✓ Application STARTED and listening on port {port}");
+    Console.WriteLine($"[Startup] ✓ URL: http://+:{port}");
+});
+
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    Console.WriteLine("[Shutdown] Application is stopping...");
+});
+
+try
+{
+    Console.WriteLine($"[Startup] Calling app.Run() on port {port}...");
+    app.Run();
+    Console.WriteLine("[Shutdown] app.Run() returned normally.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[FATAL] app.Run() threw exception: {ex.Message}");
+    Console.WriteLine($"[FATAL Stack] {ex.StackTrace}");
+    throw;
+}
