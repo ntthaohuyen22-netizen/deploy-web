@@ -323,11 +323,11 @@ builder.Services.AddControllers()
            .AddRouteComponents("odata", odataBuilder.GetEdmModel());
 });
 
-var app = builder.Build();
-
 // Railway sets $PORT env variable — use it, fallback to 8080 for local dev
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 builder.WebHost.UseUrls($"http://+:{port}");
+
+var app = builder.Build();
 
 app.UseExceptionHandler();
 
@@ -349,6 +349,9 @@ app.UseAuthorization();
 
 app.MapControllers().CacheOutput(); // Apply output cache to all controller routes
 app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("SignalRPolicy");
+
+app.Logger.LogInformation("Application starting on port {Port}", port);
+await app.StartAsync();
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
 try
@@ -376,5 +379,4 @@ if (!args.Contains("--skip-legacy-seed"))
     }
 }
 
-app.Logger.LogInformation("Application starting on port {Port}", port);
-app.Run();
+await app.WaitForShutdownAsync();
