@@ -67,10 +67,12 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         npgsqlOptionsAction: sqlOptions =>
         {
             sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 5,
-                maxRetryDelay: TimeSpan.FromSeconds(10),
+                maxRetryCount: 10,
+                maxRetryDelay: TimeSpan.FromSeconds(15),
                 errorCodesToAdd: null);
-            sqlOptions.CommandTimeout(30);
+            sqlOptions.CommandTimeout(120);
+            // Keep connection alive to avoid Render → Supabase pooler idle disconnect
+            sqlOptions.KeepAlive(30);
         });
     options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
     options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
@@ -234,6 +236,13 @@ builder.Services.AddCors(options =>
                .AllowAnyHeader()
                .AllowCredentials();
     });
+    options.AddPolicy("SignalRPolicy", builder =>
+    {
+        builder.SetIsOriginAllowed(_ => true)
+               .AllowAnyMethod()
+               .AllowAnyHeader()
+               .AllowCredentials();
+    });
 });
 
 builder.Services.AddProblemDetails();
@@ -312,6 +321,7 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 
+// Enable CORS early so preflight OPTIONS works for SignalR
 app.UseCors("AllowAll");
 app.UseRateLimiter();
 app.UseOutputCache(); // Enable output caching
@@ -328,7 +338,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers().CacheOutput(); // Apply output cache to all controller routes
-app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub");
+app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("AllowAll");
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
 using (var scope = app.Services.CreateScope())
