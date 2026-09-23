@@ -51,6 +51,7 @@ namespace MenuGoBE.Repositories
         public async Task<Account?> GetAccountByEmailAsync(string email)
         {
             return await _context.Accounts
+                .AsNoTracking()
                 .Include(a => a.Contracts)
                     .ThenInclude(c => c.Role)
                 .Include(a => a.TempRoles)
@@ -61,6 +62,7 @@ namespace MenuGoBE.Repositories
         public async Task<Account?> GetAccountWithRolesAsync(long id)
         {
             return await _context.Accounts
+                .AsNoTracking()
                 .Include(a => a.TempRoles)
                     .ThenInclude(tr => tr.Role)
                 .Include(a => a.Contracts)

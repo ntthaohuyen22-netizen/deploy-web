@@ -67,10 +67,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         npgsqlOptionsAction: sqlOptions =>
         {
             sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 10,
-                maxRetryDelay: TimeSpan.FromSeconds(15),
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
                 errorCodesToAdd: null);
-            sqlOptions.CommandTimeout(120);
+            sqlOptions.CommandTimeout(30);
             // Keep connection alive to avoid Render → Supabase pooler idle disconnect
             // is configured via "Keepalive=30" in the connection string (Npgsql reads from there).
         });
