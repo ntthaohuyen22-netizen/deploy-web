@@ -224,7 +224,9 @@ namespace MenuGoBE.Controllers
                                              (b.Product.SKUCode != null && EF.Functions.Like(b.Product.SKUCode, $"%{trimmedSearch}%")));
                 }
 
-                var list = await query.Select(b => new
+                var list = await query
+                    .AsSplitQuery()
+                    .Select(b => new
                 {
                     id = b.Id,
                     bInventoryId = b.Id,
@@ -287,7 +289,7 @@ namespace MenuGoBE.Controllers
                                 : "Đơn vị",
                             quantity = rd.Quantity
                         }).ToList()
-                }).ToListAsync();
+                }).ToListAsync(HttpContext.RequestAborted);
 
                 // Áp dụng khuyến mãi
                 if (branchId.HasValue && branchId.Value > 0)
