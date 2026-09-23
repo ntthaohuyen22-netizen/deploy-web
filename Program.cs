@@ -72,7 +72,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
                 errorCodesToAdd: null);
             sqlOptions.CommandTimeout(120);
             // Keep connection alive to avoid Render → Supabase pooler idle disconnect
-            sqlOptions.KeepAlive(30);
+            // is configured via "Keepalive=30" in the connection string (Npgsql reads from there).
         });
     options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
     options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
