@@ -31,6 +31,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENV ASPNETCORE_URLS=http://+:8080
+# Railway sets $PORT — respect it, fallback to 8080
+ENV ASPNETCORE_URLS=http://+:${PORT:-8080}
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "MenuGoBE.dll"]

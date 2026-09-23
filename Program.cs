@@ -319,6 +319,10 @@ builder.Services.AddControllers()
 
 var app = builder.Build();
 
+// Railway sets $PORT env variable — use it, fallback to 8080 for local dev
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+builder.WebHost.UseUrls($"http://+:{port}");
+
 app.UseExceptionHandler();
 
 // Enable CORS early so preflight OPTIONS works for SignalR
