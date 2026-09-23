@@ -369,45 +369,9 @@ app.MapControllers().CacheOutput(); // Apply output cache to all controller rout
 app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("AllowAll");
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
-if (!skipMigration)
-{
-    try
-    {
-        Console.WriteLine("[Startup] Running EF Core migrations...");
-        using var scope = app.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
-        await dbContext.Database.MigrateAsync();
-        Console.WriteLine("[Startup] EF Core migrations completed.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Migration Warning] {ex.Message}");
-        Console.WriteLine($"[Migration Stack] {ex.StackTrace}");
-    }
-}
-else
-{
-    Console.WriteLine("[Startup] SKIP_MIGRATION=true, skipping migrations.");
-}
+// SKIP MIGRATION - Database đã có sẵn schema
 
-if (!skipSeeding)
-{
-    try
-    {
-        Console.WriteLine("[Startup] Running LegacyBatchSeeder...");
-        await MenuGoBE.Data.LegacyBatchSeeder.SeedLegacyBatchesAsync(app.Services);
-        Console.WriteLine("[Startup] LegacyBatchSeeder completed.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Legacy Seed Warning] {ex.Message}");
-        Console.WriteLine($"[Legacy Seed Stack] {ex.StackTrace}");
-    }
-}
-else
-{
-    Console.WriteLine("[Startup] SKIP_SEEDING=true, skipping LegacyBatchSeeder.");
-}
+// LegacyBatchSeeder - SKIP (already seeded in previous runs)
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {
