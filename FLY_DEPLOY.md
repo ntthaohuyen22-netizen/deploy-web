@@ -19,7 +19,7 @@ fly auth login
 cd c:\Users\hoang\Downloads\be
 fly launch --no-deploy
 ```
-- Khi hỏi tên app → nhập `menugo-be` (hoặc tên khác)
+- Khi hỏi tên app → nhập `deploy-web-qms0pg` (hoặc tên khác)
 - Chọn region: **Singapore (sin)**
 - Chọn KHÔNG setup Postgres (Postgres có sẵn rồi)
 
@@ -44,6 +44,40 @@ fly deploy
 ```powershell
 fly open
 ```
+
+URL backend phải lấy từ chính Fly app đang chạy, không lấy từ URL frontend hoặc
+một URL ngẫu nhiên của lần deploy trước:
+
+```powershell
+fly status -a deploy-web-qms0pg
+fly apps list
+```
+
+Với cấu hình hiện tại (`app = "deploy-web-qms0pg"` trong `fly.toml`), API URL là:
+
+```text
+https://deploy-web-qms0pg.fly.dev
+```
+
+Frontend phải đặt API base URL tới backend này, ví dụ:
+
+```text
+VITE_API_URL=https://deploy-web-qms0pg.fly.dev
+```
+
+Nếu `deploy-web-qms0pg.fly.dev` hoặc hostname đang cấu hình trong frontend trả về
+`ERR_NAME_NOT_RESOLVED`, hostname đó không còn trỏ tới một Fly app. Hãy đăng
+nhập đúng tài khoản Fly, kiểm tra `fly apps list`, rồi deploy lại đúng app:
+
+```powershell
+fly deploy --config fly.toml
+fly status -a deploy-web-qms0pg
+curl.exe https://deploy-web-qms0pg.fly.dev/health
+```
+
+Chỉ cập nhật URL frontend sau khi `/health` trả về HTTP 200. Thay đổi
+`fly.toml` không thể khôi phục một app đã bị xoá; khi đó cần tạo lại app bằng
+`fly launch --no-deploy` hoặc dùng đúng tên app đang tồn tại.
 
 ## 8. Update lần sau
 Sau khi sửa code:

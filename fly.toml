@@ -1,7 +1,7 @@
 # Fly.io configuration for MenuGoBE
 # Region: Singapore (gần VN nhất)
 
-app = "menugo-be"
+app = "deploy-web-qms0pg"
 primary_region = "sin"
 
 [build]

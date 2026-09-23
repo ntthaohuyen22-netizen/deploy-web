@@ -3,6 +3,15 @@ USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
 
+# Npgsql can load GSSAPI/Kerberos support when opening PostgreSQL connections.
+# Keep the runtime image self-contained so a database connection cannot crash
+# the app after startup.
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+USER $APP_UID
+
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
