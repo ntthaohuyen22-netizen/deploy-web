@@ -218,7 +218,13 @@ builder.Services.AddScoped<IShiftFeedbackService, ShiftFeedbackService>();
 builder.Services.AddScoped<IPayrollSuggestionService, PayrollSuggestionService>();
 
 // SignalR (registered once, used for both NotificationHub and DeviceHub)
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    // Keep long-lived Fly.io WebSocket connections alive even when no
+    // application notification is being sent.
+    options.KeepAliveInterval = TimeSpan.FromSeconds(10);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+});
 
 
 // Signal & Monitor Services for Reservation
