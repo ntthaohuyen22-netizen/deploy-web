@@ -47,6 +47,10 @@ builder.Services.AddMemoryCache(options =>
     options.SizeLimit = 1024; // max 1024 entries
 });
 
+// ── Conditional startup flags (set via Railway env vars) ────────────────────
+var skipSeeding = Environment.GetEnvironmentVariable("SKIP_SEEDING") == "true";
+var skipMigration = Environment.GetEnvironmentVariable("SKIP_MIGRATION") == "true";
+
 // System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -344,21 +348,28 @@ app.MapControllers().CacheOutput(); // Apply output cache to all controller rout
 app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("AllowAll");
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
-try
+if (!skipMigration)
 {
-    using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
-    Console.WriteLine("[Startup] Running EF Core migrations...");
-    await dbContext.Database.MigrateAsync();
-    Console.WriteLine("[Startup] EF Core migrations completed.");
+    try
+    {
+        Console.WriteLine("[Startup] Running EF Core migrations...");
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
+        await dbContext.Database.MigrateAsync();
+        Console.WriteLine("[Startup] EF Core migrations completed.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Migration Warning] {ex.Message}");
+        Console.WriteLine($"[Migration Stack] {ex.StackTrace}");
+    }
 }
-catch (Exception ex)
+else
 {
-    Console.WriteLine($"[Migration Warning] {ex.Message}");
-    Console.WriteLine($"[Migration Stack] {ex.StackTrace}");
+    Console.WriteLine("[Startup] SKIP_MIGRATION=true, skipping migrations.");
 }
 
-if (!args.Contains("--skip-legacy-seed"))
+if (!skipSeeding)
 {
     try
     {
@@ -371,6 +382,10 @@ if (!args.Contains("--skip-legacy-seed"))
         Console.WriteLine($"[Legacy Seed Warning] {ex.Message}");
         Console.WriteLine($"[Legacy Seed Stack] {ex.StackTrace}");
     }
+}
+else
+{
+    Console.WriteLine("[Startup] SKIP_SEEDING=true, skipping LegacyBatchSeeder.");
 }
 
 app.Lifetime.ApplicationStarted.Register(() =>
