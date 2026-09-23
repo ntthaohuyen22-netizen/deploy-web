@@ -50,6 +50,7 @@ builder.Services.AddMemoryCache(options =>
 // ── Conditional startup flags (set via Railway env vars) ────────────────────
 var skipSeeding = Environment.GetEnvironmentVariable("SKIP_SEEDING") == "true";
 var skipMigration = Environment.GetEnvironmentVariable("SKIP_MIGRATION") == "true";
+var disableHostedServices = Environment.GetEnvironmentVariable("DISABLE_HOSTED_SERVICES") == "true";
 
 // System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
@@ -183,11 +184,18 @@ builder.Services.AddScoped<IKitchenService, KitchenService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IVoucherService, VoucherService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
-builder.Services.AddHostedService<AutoCheckoutService>();
-builder.Services.AddHostedService<MenuGoBE.Service.BackgroundService.NotificationSyncWorker>();
+
+if (!disableHostedServices)
+{
+    builder.Services.AddHostedService<AutoCheckoutService>();
+    builder.Services.AddHostedService<MenuGoBE.Service.BackgroundService.NotificationSyncWorker>();
+}
 builder.Services.AddScoped<IOrderAssignmentService, OrderAssignmentService>();
-builder.Services.AddHostedService<OrderAssignmentMonitorService>();
-builder.Services.AddHostedService<GuestChatCleanupService>();
+if (!disableHostedServices)
+{
+    builder.Services.AddHostedService<OrderAssignmentMonitorService>();
+    builder.Services.AddHostedService<GuestChatCleanupService>();
+}
 builder.Services.AddScoped<INewWardService, NewWardService>();
 builder.Services.AddScoped<IOldWardService, OldWardService>();
 builder.Services.AddScoped<INewProvinceService, NewProvinceService>();
@@ -214,16 +222,25 @@ builder.Services.AddSignalR();
 
 // Signal & Monitor Services for Reservation
 builder.Services.AddSingleton<IReservationSignalService, ReservationSignalService>();
-builder.Services.AddHostedService<ReservationMonitorService>();
+if (!disableHostedServices)
+{
+    builder.Services.AddHostedService<ReservationMonitorService>();
+}
 
 // Reservation Email Notification Queue & Worker
 builder.Services.AddSingleton<IReservationNotificationQueue, ReservationNotificationQueue>();
-builder.Services.AddHostedService<ReservationNotificationWorker>();
+if (!disableHostedServices)
+{
+    builder.Services.AddHostedService<ReservationNotificationWorker>();
+}
 
 // Device Auth Service (QR + SignalR)
 builder.Services.AddSingleton<DeviceAuthService>();
 builder.Services.AddSingleton<IDeviceAuthService>(provider => provider.GetRequiredService<DeviceAuthService>());
-builder.Services.AddHostedService(provider => provider.GetRequiredService<DeviceAuthService>());
+if (!disableHostedServices)
+{
+    builder.Services.AddHostedService(provider => provider.GetRequiredService<DeviceAuthService>());
+}
 
 // PayOS setup
 var payOsConfig = builder.Configuration.GetSection("PayOS");
