@@ -345,6 +345,10 @@ builder.Services.AddControllers()
 
 var app = builder.Build();
 
+// CRITICAL: use ExceptionHandler middleware so any error is caught
+app.UseExceptionHandler(_ => { });
+app.UseStatusCodePages();
+
 // Enable CORS early so preflight OPTIONS works for SignalR
 app.UseCors("AllowAll");
 app.UseRateLimiter();
