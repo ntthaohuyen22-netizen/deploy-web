@@ -1,33 +1,36 @@
-# Fly.io configuration for MenuGoBE
-# Region: Singapore (gần VN nhất)
+# fly.toml app configuration file generated for deploy-web-qms0pg on 2026-09-23T07:27:21Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "menugo-be"
-primary_region = "sin"
+app = 'deploy-web-qms0pg'
+primary_region = 'sin'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  ASPNETCORE_ENVIRONMENT = "Production"
-  ASPNETCORE_URLS = "http://+:8080"
-  PORT = "8080"
+  ASPNETCORE_ENVIRONMENT = 'Production'
+  ASPNETCORE_URLS = 'http://+:8080'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
   [[http_service.checks]]
-    grace_period = "30s"
-    interval = "60s"
-    method = "GET"
-    timeout = "10s"
-    path = "/health"
+    interval = '1m0s'
+    timeout = '10s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
-  cpu_kind = "shared"
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256
