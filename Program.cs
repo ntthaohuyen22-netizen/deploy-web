@@ -345,20 +345,30 @@ app.MapControllers().CacheOutput(); // Apply output cache to all controller rout
 app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("AllowAll");
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
-using (var scope = app.Services.CreateScope())
+try
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[Migration Warning] {ex.Message}");
+    Console.WriteLine($"[Migration Stack] {ex.StackTrace}");
+}
+
+if (!args.Contains("--skip-legacy-seed"))
 {
     try
     {
-        var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
-        await dbContext.Database.MigrateAsync();
+        await MenuGoBE.Data.LegacyBatchSeeder.SeedLegacyBatchesAsync(app.Services);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Migration Warning] {ex.Message}");
+        Console.WriteLine($"[Legacy Seed Warning] {ex.Message}");
+        Console.WriteLine($"[Legacy Seed Stack] {ex.StackTrace}");
     }
 }
 
-// Tự động khởi tạo Lô hàng kế thừa (LEGACY-INIT) cho các bản ghi tồn kho dương hiện có
-await MenuGoBE.Data.LegacyBatchSeeder.SeedLegacyBatchesAsync(app.Services);
-
+app.Logger.LogInformation("Application starting on port {Port}", port);
 app.Run();
