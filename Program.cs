@@ -229,19 +229,25 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", builder =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        builder.SetIsOriginAllowed(_ => true)
-               .AllowAnyMethod()
-               .AllowAnyHeader()
-               .AllowCredentials();
+        policy.WithOrigins(
+                "https://deploy-web-fe.vercel.app",
+                "http://localhost:3000",
+                "http://localhost:5173")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
-    options.AddPolicy("SignalRPolicy", builder =>
+    options.AddPolicy("SignalRPolicy", policy =>
     {
-        builder.SetIsOriginAllowed(_ => true)
-               .AllowAnyMethod()
-               .AllowAnyHeader()
-               .AllowCredentials();
+        policy.WithOrigins(
+                "https://deploy-web-fe.vercel.app",
+                "http://localhost:3000",
+                "http://localhost:5173")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
@@ -325,8 +331,8 @@ builder.WebHost.UseUrls($"http://+:{port}");
 
 app.UseExceptionHandler();
 
-// Enable CORS early so preflight OPTIONS works for SignalR
-app.UseCors("AllowAll");
+app.UseRouting();
+app.UseCors("AllowFrontend");
 app.UseRateLimiter();
 app.UseOutputCache(); // Enable output caching
 
@@ -342,7 +348,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers().CacheOutput(); // Apply output cache to all controller routes
-app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("AllowAll");
+app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("SignalRPolicy");
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
 try
