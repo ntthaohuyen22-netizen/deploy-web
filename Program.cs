@@ -353,19 +353,6 @@ app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("Signa
 app.Logger.LogInformation("Application starting on port {Port}", port);
 await app.StartAsync();
 
-// Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
-try
-{
-    using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
-    await dbContext.Database.MigrateAsync();
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"[Migration Warning] {ex.Message}");
-    Console.WriteLine($"[Migration Stack] {ex.StackTrace}");
-}
-
 if (!args.Contains("--skip-legacy-seed"))
 {
     try
