@@ -3,10 +3,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace MenuGo.Controllers;
 
 [ApiController]
-[Route("health")]
+[Route("[controller]")]
 public class HealthController : ControllerBase
 {
     [HttpGet("")]
+    [HttpGet("/health")]
     public IActionResult Get()
     {
         return Ok(new

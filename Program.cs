@@ -29,11 +29,6 @@ using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Railway sets $PORT env variable — use it, fallback to 8080 for local dev
-var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-Console.WriteLine($"[Startup] Binding to port {port}");
-builder.WebHost.UseUrls($"http://+:{port}");
-
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -46,11 +41,6 @@ builder.Services.AddMemoryCache(options =>
 {
     options.SizeLimit = 1024; // max 1024 entries
 });
-
-// ── Conditional startup flags (set via Railway env vars) ────────────────────
-var skipSeeding = Environment.GetEnvironmentVariable("SKIP_SEEDING") == "true";
-var skipMigration = Environment.GetEnvironmentVariable("SKIP_MIGRATION") == "true";
-var disableHostedServices = Environment.GetEnvironmentVariable("DISABLE_HOSTED_SERVICES") == "true";
 
 // System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
@@ -76,7 +66,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
         npgsqlOptionsAction: sqlOptions =>
         {
-            sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
             sqlOptions.EnableRetryOnFailure(
                 maxRetryCount: 10,
                 maxRetryDelay: TimeSpan.FromSeconds(15),
@@ -185,18 +174,11 @@ builder.Services.AddScoped<IKitchenService, KitchenService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IVoucherService, VoucherService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
-
-if (!disableHostedServices)
-{
-    builder.Services.AddHostedService<AutoCheckoutService>();
-    builder.Services.AddHostedService<MenuGoBE.Service.BackgroundService.NotificationSyncWorker>();
-}
+builder.Services.AddHostedService<AutoCheckoutService>();
+builder.Services.AddHostedService<MenuGoBE.Service.BackgroundService.NotificationSyncWorker>();
 builder.Services.AddScoped<IOrderAssignmentService, OrderAssignmentService>();
-if (!disableHostedServices)
-{
-    builder.Services.AddHostedService<OrderAssignmentMonitorService>();
-    builder.Services.AddHostedService<GuestChatCleanupService>();
-}
+builder.Services.AddHostedService<OrderAssignmentMonitorService>();
+builder.Services.AddHostedService<GuestChatCleanupService>();
 builder.Services.AddScoped<INewWardService, NewWardService>();
 builder.Services.AddScoped<IOldWardService, OldWardService>();
 builder.Services.AddScoped<INewProvinceService, NewProvinceService>();
@@ -218,36 +200,21 @@ builder.Services.AddScoped<IShiftFeedbackService, ShiftFeedbackService>();
 builder.Services.AddScoped<IPayrollSuggestionService, PayrollSuggestionService>();
 
 // SignalR (registered once, used for both NotificationHub and DeviceHub)
-builder.Services.AddSignalR(options =>
-{
-    // Keep long-lived Fly.io WebSocket connections alive even when no
-    // application notification is being sent.
-    options.KeepAliveInterval = TimeSpan.FromSeconds(10);
-    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
-});
+builder.Services.AddSignalR();
 
 
 // Signal & Monitor Services for Reservation
 builder.Services.AddSingleton<IReservationSignalService, ReservationSignalService>();
-if (!disableHostedServices)
-{
-    builder.Services.AddHostedService<ReservationMonitorService>();
-}
+builder.Services.AddHostedService<ReservationMonitorService>();
 
 // Reservation Email Notification Queue & Worker
 builder.Services.AddSingleton<IReservationNotificationQueue, ReservationNotificationQueue>();
-if (!disableHostedServices)
-{
-    builder.Services.AddHostedService<ReservationNotificationWorker>();
-}
+builder.Services.AddHostedService<ReservationNotificationWorker>();
 
 // Device Auth Service (QR + SignalR)
 builder.Services.AddSingleton<DeviceAuthService>();
 builder.Services.AddSingleton<IDeviceAuthService>(provider => provider.GetRequiredService<DeviceAuthService>());
-if (!disableHostedServices)
-{
-    builder.Services.AddHostedService(provider => provider.GetRequiredService<DeviceAuthService>());
-}
+builder.Services.AddHostedService(provider => provider.GetRequiredService<DeviceAuthService>());
 
 // PayOS setup
 var payOsConfig = builder.Configuration.GetSection("PayOS");
@@ -352,9 +319,11 @@ builder.Services.AddControllers()
 
 var app = builder.Build();
 
-// CRITICAL: use ExceptionHandler middleware so any error is caught
-app.UseExceptionHandler(_ => { });
-app.UseStatusCodePages();
+// Railway sets $PORT env variable — use it, fallback to 8080 for local dev
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+builder.WebHost.UseUrls($"http://+:{port}");
+
+app.UseExceptionHandler();
 
 // Enable CORS early so preflight OPTIONS works for SignalR
 app.UseCors("AllowAll");
@@ -376,30 +345,30 @@ app.MapControllers().CacheOutput(); // Apply output cache to all controller rout
 app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("AllowAll");
 
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
-// SKIP MIGRATION - Database đã có sẵn schema
-
-// LegacyBatchSeeder - SKIP (already seeded in previous runs)
-
-app.Lifetime.ApplicationStarted.Register(() =>
-{
-    Console.WriteLine($"[Startup] ✓ Application STARTED and listening on port {port}");
-    Console.WriteLine($"[Startup] ✓ URL: http://+:{port}");
-});
-
-app.Lifetime.ApplicationStopping.Register(() =>
-{
-    Console.WriteLine("[Shutdown] Application is stopping...");
-});
-
 try
 {
-    Console.WriteLine($"[Startup] Calling app.Run() on port {port}...");
-    app.Run();
-    Console.WriteLine("[Shutdown] app.Run() returned normally.");
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
+    await dbContext.Database.MigrateAsync();
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[FATAL] app.Run() threw exception: {ex.Message}");
-    Console.WriteLine($"[FATAL Stack] {ex.StackTrace}");
-    throw;
+    Console.WriteLine($"[Migration Warning] {ex.Message}");
+    Console.WriteLine($"[Migration Stack] {ex.StackTrace}");
 }
+
+if (!args.Contains("--skip-legacy-seed"))
+{
+    try
+    {
+        await MenuGoBE.Data.LegacyBatchSeeder.SeedLegacyBatchesAsync(app.Services);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Legacy Seed Warning] {ex.Message}");
+        Console.WriteLine($"[Legacy Seed Stack] {ex.StackTrace}");
+    }
+}
+
+app.Logger.LogInformation("Application starting on port {Port}", port);
+app.Run();
