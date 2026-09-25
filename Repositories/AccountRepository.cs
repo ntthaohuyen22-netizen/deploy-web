@@ -22,6 +22,7 @@ namespace MenuGoBE.Repositories
         {
             var query = _context.Accounts
                 .Include(a => a.Contracts)
+                .AsNoTracking()
                 .Where(a => !a.Contracts.Any() || !a.Contracts.Any(c => excludedRoles.Contains(c.RoleId)))
                 .AsQueryable();
 
@@ -37,6 +38,7 @@ namespace MenuGoBE.Repositories
         {
             var query = _context.Accounts
                 .Include(a => a.Contracts)
+                .AsNoTracking()
                 .Where(a => !a.Contracts.Any() || a.Contracts.Any(c => roleIds.Contains(c.RoleId)))
                 .AsQueryable();
 
@@ -51,22 +53,22 @@ namespace MenuGoBE.Repositories
         public async Task<Account?> GetAccountByEmailAsync(string email)
         {
             return await _context.Accounts
-                .AsNoTracking()
                 .Include(a => a.Contracts)
                     .ThenInclude(c => c.Role)
                 .Include(a => a.TempRoles)
                     .ThenInclude(tr => tr.Role)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Email == email && a.IsActive);
         }
 
         public async Task<Account?> GetAccountWithRolesAsync(long id)
         {
             return await _context.Accounts
-                .AsNoTracking()
                 .Include(a => a.TempRoles)
                     .ThenInclude(tr => tr.Role)
                 .Include(a => a.Contracts)
                     .ThenInclude(c => c.Role)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == id);
         }
 
@@ -74,6 +76,7 @@ namespace MenuGoBE.Repositories
         {
             return await _context.Accounts
                 .Include(a => a.Contracts)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == id);
         }
 

@@ -21,6 +21,7 @@ namespace MenuGoBE.Repositories
         public async Task<List<Order>> GetAllAsync()
         {
             return await _context.Orders
+                .AsNoTracking()
                 .Include(o => o.Table)
                     .ThenInclude(t => t.Area)
                 .Include(o => o.Payments)
@@ -40,6 +41,7 @@ namespace MenuGoBE.Repositories
         public async Task<List<Order>> GetChildOrdersAsync(long fatherId)
         {
             return await _context.Orders
+                .AsNoTracking()
                 .Where(o => o.FatherId == fatherId)
                 .ToListAsync();
         }
@@ -47,6 +49,7 @@ namespace MenuGoBE.Repositories
         public async Task<List<Order>> GetChildOrdersWithDetailsAsync(long fatherId)
         {
             return await _context.Orders
+                .AsNoTracking()
                 .Where(o => o.FatherId == fatherId && (o.Status == "Active" || o.Status == "Reserved"))
                 .Include(o => o.OrderDetails)
                     .ThenInclude(od => od.Product)
@@ -57,6 +60,7 @@ namespace MenuGoBE.Repositories
         public async Task<Order?> GetActiveOrderByTableIdAsync(long tableId)
         {
             var activeOrders = await _context.Orders
+                .AsNoTracking()
                 .Where(o => o.TableId == tableId && (o.Status == "Active" || o.Status == "Internal"))
                 .Include(o => o.OrderDetails)
                     .ThenInclude(od => od.Product)
@@ -73,6 +77,7 @@ namespace MenuGoBE.Repositories
         public async Task<Order?> GetActiveOrderByIdWithDetailsAsync(long orderId)
         {
             return await _context.Orders
+                .AsNoTracking()
                 .Where(o => o.Id == orderId && o.Status == "Active")
                 .Include(o => o.OrderDetails)
                     .ThenInclude(od => od.Product)
@@ -84,6 +89,7 @@ namespace MenuGoBE.Repositories
         public async Task<List<Order>> GetActiveKitchenOrdersWithDetailsAsync(long? branchId = null)
         {
             var query = _context.Orders
+                .AsNoTracking()
                 .Where(o => o.Status == "Active" || o.Status == "Internal");
 
             if (branchId.HasValue)
@@ -124,25 +130,27 @@ namespace MenuGoBE.Repositories
                 .FirstOrDefaultAsync();
         }
 
-        public async Task<List<Order>> GetPaidOrdersByBranchAsync(long branchId)
+        public async Task<List<Order>> GetPaidOrdersByBranchAsync(long branchId, DateTime? startDate = null, DateTime? endDate = null)
         {
-            return await _context.Orders
-                .Where(o => (branchId <= 0 || (o.Table != null && o.Table.Area != null && o.Table.Area.BranchId == branchId)) && o.Status == "Paid")
+            var query = _context.Orders
+                .AsNoTracking()
+                .Where(o => (branchId <= 0 || (o.Table != null && o.Table.Area != null && o.Table.Area.BranchId == branchId)) && o.Status == "Paid");
+
+            if (startDate.HasValue)
+            {
+                query = query.Where(o => o.CreatedAt >= startDate.Value);
+            }
+
+            if (endDate.HasValue)
+            {
+                query = query.Where(o => o.CreatedAt <= endDate.Value);
+            }
+
+            return await query
                 .Include(o => o.OrderDetails)
                     .ThenInclude(od => od.Product)
                 .Include(o => o.Table)
                     .ThenInclude(t => t.Area)
-                        .ThenInclude(a => a.Branch)
-                            .ThenInclude(b => b.Address)
-                                .ThenInclude(addr => addr.NewWard)
-                                    .ThenInclude(w => w.NewProvince)
-                .Include(o => o.Table)
-                    .ThenInclude(t => t.Area)
-                        .ThenInclude(a => a.Branch)
-                            .ThenInclude(b => b.Address)
-                                .ThenInclude(addr => addr.OldWard)
-                                    .ThenInclude(w => w.OldDistrict)
-                                        .ThenInclude(d => d.OldProvince)
                 .Include(o => o.Customer)
                 .Include(o => o.Voucher)
                 .Include(o => o.Payments)
@@ -153,6 +161,7 @@ namespace MenuGoBE.Repositories
         public async Task<List<Order>> GetReturnableOrdersByBranchAsync(long branchId)
         {
             var validOrders = await _context.Orders
+                .AsNoTracking()
                 .Where(o => o.Table != null && o.Table.Area != null && o.Table.Area.BranchId == branchId && o.Status != "Paid" && o.Status != "Completed" && o.Status != "Cancelled" && o.Status != "Internal")
                 .Include(o => o.Table)
                     .ThenInclude(t => t.Area)
@@ -197,6 +206,13 @@ namespace MenuGoBE.Repositories
         public Microsoft.EntityFrameworkCore.Storage.IExecutionStrategy CreateExecutionStrategy()
         {
             return _context.Database.CreateExecutionStrategy();
+        }
+
+        // Sau khi rollback transaction, EF vẫn giữ các thay đổi chưa lưu trong change tracker —
+        // gọi hàm này để món lỗi không "dính" sang lần SaveChanges của món kế tiếp.
+        public void ClearChangeTracker()
+        {
+            _context.ChangeTracker.Clear();
         }
     }
 }

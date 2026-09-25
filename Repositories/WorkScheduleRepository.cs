@@ -19,7 +19,7 @@ namespace MenuGoBE.Repositories
 
         public async Task<List<WorkSchedule>> GetAllAsync()
         {
-            return await _context.WorkSchedules.ToListAsync();
+            return await _context.WorkSchedules.AsNoTracking().ToListAsync();
         }
 
         public async Task<WorkSchedule?> GetByIdAsync(long id)
@@ -32,6 +32,7 @@ namespace MenuGoBE.Repositories
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
                 .Include(ws => ws.Account)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(ws => ws.Id == id);
         }
 
@@ -73,6 +74,7 @@ namespace MenuGoBE.Repositories
         public async Task<List<WorkSchedule>> GetByAccountIdAsync(long accountId)
         {
             return await _context.WorkSchedules
+                .AsNoTracking()
                 .Where(ws => ws.AccountId == accountId)
                 .ToListAsync();
         }
@@ -84,18 +86,21 @@ namespace MenuGoBE.Repositories
 
         public async Task<List<WorkSchedule>> GetTodaySchedulesAsync(long accountId, long branchId, DateOnly date)
         {
+            var yesterday = date.AddDays(-1);
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
-                .Where(ws => ws.AccountId == accountId 
-                          && ws.BranchId == branchId 
-                          && ws.WorkDate == date)
-                .OrderBy(ws => ws.Shift.StartTime)
+                .AsNoTracking()
+                .Where(ws => ws.AccountId == accountId && ws.BranchId == branchId &&
+                             (ws.WorkDate == date || 
+                              (ws.WorkDate == yesterday && ws.Shift.StartTime > ws.Shift.EndTime)))
+                .OrderBy(ws => ws.WorkDate).ThenBy(ws => ws.Shift.StartTime)
                 .ToListAsync();
         }
         public async Task<List<WorkSchedule>> GetOpenSchedulesAsync()
         {
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
+                .AsNoTracking()
                 .Where(ws => ws.CheckInAt != null && ws.CheckOutAt == null)
                 .ToListAsync();
         }
@@ -104,6 +109,7 @@ namespace MenuGoBE.Repositories
         {
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
+                .AsNoTracking()
                 .Where(ws => accountIds.Contains(ws.AccountId)
                           && ws.CheckInAt == null
                           && (ws.Status.ToUpper() == "APPROVED" || ws.Status.ToUpper() == "PENDING" || ws.Status.ToUpper() == "SCHEDULED"))
@@ -114,11 +120,25 @@ namespace MenuGoBE.Repositories
         {
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
+                .AsNoTracking()
                 .Where(ws => ws.CheckInAt == null
                           && ws.Status != "ABSENT"
                           && ws.Status != "Absent"
                           && ws.Status != "Completed"
                           && !ws.Status.StartsWith("LEAVE_APPROVED"))
+                .ToListAsync();
+        }
+
+        public async Task<List<WorkSchedule>> GetTodaySchedulesByAccountAsync(long accountId, DateOnly date)
+        {
+            var yesterday = date.AddDays(-1);
+            return await _context.WorkSchedules
+                .Include(ws => ws.Shift)
+                .AsNoTracking()
+                .Where(ws => ws.AccountId == accountId && 
+                             (ws.WorkDate == date || 
+                              (ws.WorkDate == yesterday && ws.Shift.StartTime > ws.Shift.EndTime)))
+                .OrderBy(ws => ws.WorkDate).ThenBy(ws => ws.Shift.StartTime)
                 .ToListAsync();
         }
     }

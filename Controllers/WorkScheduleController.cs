@@ -101,7 +101,7 @@ namespace MenuGoBE.Controllers
 
             if (isAdmin)
             {
-                return StatusCode(403, new { message = "Chủ sở hữu / Quản trị viên chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
+                return StatusCode(403, new { message = "Chủ sở hữu chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
             }
             if (!isManager)
             {
@@ -137,7 +137,7 @@ namespace MenuGoBE.Controllers
 
             if (isAdmin)
             {
-                return StatusCode(403, new { message = "Chủ sở hữu / Quản trị viên chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
+                return StatusCode(403, new { message = "Chủ sở hữu chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
             }
             if (!isManager)
             {
@@ -173,7 +173,7 @@ namespace MenuGoBE.Controllers
 
             if (isAdmin)
             {
-                return StatusCode(403, new { message = "Chủ sở hữu / Quản trị viên chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
+                return StatusCode(403, new { message = "Chủ sở hữu chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
             }
             if (!isManager)
             {
@@ -255,7 +255,7 @@ namespace MenuGoBE.Controllers
 
             if (isAdmin)
             {
-                return StatusCode(403, new { message = "Chủ sở hữu / Quản trị viên chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
+                return StatusCode(403, new { message = "Chủ sở hữu chỉ có quyền xem lịch làm việc, việc xếp lịch thuộc về Quản lý chi nhánh." });
             }
             if (!isManager)
             {
@@ -293,6 +293,21 @@ namespace MenuGoBE.Controllers
                 return Unauthorized(new { message = "Không xác định được tài khoản đăng nhập." });
 
             var result = await _service.GetByAccountIdAsync(currentUserId.Value);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Trả về thông tin phiên làm việc hiện tại (ca đang Working) của nhân viên đang đăng nhập.
+        /// Frontend gọi 1 API duy nhất thay vì gọi /mine + /Shift rồi tự lọc.
+        /// </summary>
+        [HttpGet("current-session")]
+        public async Task<IActionResult> GetCurrentShiftSession()
+        {
+            var currentUserId = GetCurrentAccountId();
+            if (!currentUserId.HasValue)
+                return Unauthorized(new { message = "Không xác định được tài khoản đăng nhập." });
+
+            var result = await _service.GetCurrentShiftSessionAsync(currentUserId.Value);
             return Ok(result);
         }
 

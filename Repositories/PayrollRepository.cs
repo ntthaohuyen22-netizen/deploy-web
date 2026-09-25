@@ -28,6 +28,7 @@ namespace MenuGoBE.Repositories
                 .Include(p => p.Approver)
                 .Include(p => p.SalaryDetails)
                 .Include(p => p.PayrollShiftDetails)
+                .AsNoTracking()
                 .AsQueryable();
 
             if (branchId.HasValue && branchId.Value > 0)
@@ -65,6 +66,7 @@ namespace MenuGoBE.Repositories
                 .Include(p => p.SalaryDetails)
                     .ThenInclude(sd => sd.Account)
                 .Include(p => p.PayrollShiftDetails)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
 
@@ -79,6 +81,7 @@ namespace MenuGoBE.Repositories
                 .Include(p => p.SalaryDetails)
                     .ThenInclude(sd => sd.Account)
                 .Include(p => p.PayrollShiftDetails)
+                .AsNoTracking()
                 .Where(p => p.AccountId == accountId);
 
             if (month.HasValue && month.Value > 0)
@@ -102,7 +105,22 @@ namespace MenuGoBE.Repositories
                 .Include(p => p.Approver)
                 .Include(p => p.SalaryDetails)
                 .Include(p => p.PayrollShiftDetails)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.AccountId == accountId && p.Month == month && p.Year == year);
+        }
+
+        public async Task<List<Payroll>> GetByAccountsMonthYearAsync(IEnumerable<long> accountIds, int month, int year)
+        {
+            return await _context.Payrolls
+                .Include(p => p.Account)
+                .Include(p => p.Branch)
+                .Include(p => p.Contract)
+                .Include(p => p.Locker)
+                .Include(p => p.Approver)
+                .Include(p => p.SalaryDetails)
+                .Include(p => p.PayrollShiftDetails)
+                .Where(p => accountIds.Contains(p.AccountId) && p.Month == month && p.Year == year)
+                .ToListAsync();
         }
 
         public async Task CreateAsync(Payroll entity)

@@ -29,18 +29,15 @@ using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var railwayPort = Environment.GetEnvironmentVariable("PORT");
+if (int.TryParse(railwayPort, out var port) && port is > 0 and <= 65535)
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
-
-// ── Output Caching ─────────────────────────────────────────────────────────────
-builder.Services.AddOutputCache();
-
-// ── Memory Cache (already present, just keeping) ──────────────────────────────
-builder.Services.AddMemoryCache(options =>
-{
-    options.SizeLimit = 1024; // max 1024 entries
-});
 
 // System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
@@ -66,17 +63,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
         npgsqlOptionsAction: sqlOptions =>
         {
+            sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
             sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 3,
-                maxRetryDelay: TimeSpan.FromSeconds(5),
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(10),
                 errorCodesToAdd: null);
-            sqlOptions.CommandTimeout(30);
-            // Keep connection alive to avoid Render → Supabase pooler idle disconnect
-            // is configured via "Keepalive=30" in the connection string (Npgsql reads from there).
         });
     options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-    options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
-    options.EnableDetailedErrors(builder.Environment.IsDevelopment());
 });
 
 
@@ -199,8 +192,10 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IShiftFeedbackService, ShiftFeedbackService>();
 builder.Services.AddScoped<IPayrollSuggestionService, PayrollSuggestionService>();
 
-// SignalR (registered once, used for both NotificationHub and DeviceHub)
+// SignalR
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<IDictionary<string, string>>(opts => new Dictionary<string, string>());
+builder.Services.AddSingleton<IDictionary<string, long>>(opts => new Dictionary<string, long>());
 
 
 // Signal & Monitor Services for Reservation
@@ -227,29 +222,40 @@ builder.Services.AddSingleton(new PayOSClient(
 // Payment Service
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 
+
+builder.Services.AddSignalR();
+
+var corsAllowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend", policy =>
+    options.AddPolicy("AllowAll", corsBuilder =>
     {
-        policy.WithOrigins(
-                "https://deploy-web-fe.vercel.app",
-                "http://localhost:3000",
-                "http://localhost:5173")
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
-    });
-    options.AddPolicy("SignalRPolicy", policy =>
-    {
-        policy.WithOrigins(
-                "https://deploy-web-fe.vercel.app",
-                "http://localhost:3000",
-                "http://localhost:5173")
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+        corsBuilder.SetIsOriginAllowed(origin =>
+               corsAllowedOrigins.Length == 0 ||
+               corsAllowedOrigins.Any(configuredOrigin =>
+                   configuredOrigin == "*" ||
+                   (configuredOrigin.Contains('*') &&
+                    IsAllowedWildcardOrigin(origin, configuredOrigin)) ||
+                   string.Equals(configuredOrigin, origin, StringComparison.OrdinalIgnoreCase)))
+               .AllowAnyMethod()
+               .AllowAnyHeader()
+               .AllowCredentials();
     });
 });
+
+static bool IsAllowedWildcardOrigin(string origin, string configuredOrigin)
+{
+    var wildcardIndex = configuredOrigin.IndexOf('*');
+    var prefix = configuredOrigin[..wildcardIndex];
+    var suffix = configuredOrigin[(wildcardIndex + 1)..];
+
+    return origin.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+        && origin.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+        && origin.Length > prefix.Length + suffix.Length;
+}
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -323,18 +329,13 @@ builder.Services.AddControllers()
            .AddRouteComponents("odata", odataBuilder.GetEdmModel());
 });
 
-// Railway sets $PORT env variable — use it, fallback to 8080 for local dev
-var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-builder.WebHost.UseUrls($"http://+:{port}");
-
 var app = builder.Build();
 
 app.UseExceptionHandler();
 
-app.UseRouting();
-app.UseCors("AllowFrontend");
+app.UseCors("AllowAll");
+
 app.UseRateLimiter();
-app.UseOutputCache(); // Enable output caching
 
 if (app.Environment.IsDevelopment())
 {
@@ -347,23 +348,27 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers().CacheOutput(); // Apply output cache to all controller routes
-app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub").RequireCors("SignalRPolicy");
+app.MapControllers();
+app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub");
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
+   .AllowAnonymous()
+   .WithTags("Health");
 
-app.Logger.LogInformation("Application starting on port {Port}", port);
-await app.StartAsync();
-
-if (!args.Contains("--skip-legacy-seed"))
+// Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
+using (var scope = app.Services.CreateScope())
 {
     try
     {
-        await MenuGoBE.Data.LegacyBatchSeeder.SeedLegacyBatchesAsync(app.Services);
+        var dbContext = scope.ServiceProvider.GetRequiredService<MenuGoBE.Data.AppDbContext>();
+        await dbContext.Database.MigrateAsync();
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Legacy Seed Warning] {ex.Message}");
-        Console.WriteLine($"[Legacy Seed Stack] {ex.StackTrace}");
+        Console.WriteLine($"[Migration Warning] {ex.Message}");
     }
 }
 
-await app.WaitForShutdownAsync();
+// Tự động khởi tạo Lô hàng kế thừa (LEGACY-INIT) cho các bản ghi tồn kho dương hiện có
+await MenuGoBE.Data.LegacyBatchSeeder.SeedLegacyBatchesAsync(app.Services);
+
+app.Run();

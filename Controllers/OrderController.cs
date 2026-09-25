@@ -132,7 +132,7 @@ namespace MenuGoBE.Controllers
         }
 
         [HttpGet("invoices")]
-        public async Task<IActionResult> GetInvoices([FromQuery] long branchId)
+        public async Task<IActionResult> GetInvoices([FromQuery] long branchId, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
         {
             if (User != null && User.Identity != null && User.Identity.IsAuthenticated)
             {
@@ -152,7 +152,7 @@ namespace MenuGoBE.Controllers
                 }
             }
 
-            var result = await _service.GetPaidOrdersByBranchAsync(branchId);
+            var result = await _service.GetPaidOrdersByBranchAsync(branchId, startDate, endDate);
             return Ok(result);
         }
 
@@ -895,8 +895,11 @@ namespace MenuGoBE.Controllers
             }
 
             var result = await _detailService.BatchUpdateCookingStatusAsync(dto.ProductId, dto.CookingStatus, allowedBranchIds);
-            if (!result)
-                return NotFound(new { message = "Không tìm thấy món ăn nào đang chờ xác nhận hoặc cập nhật thất bại." });
+            if (result.Started == 0 && result.Errors.Count == 0)
+                return NotFound(new { message = "Không tìm thấy món ăn nào đang chờ xác nhận." });
+
+            if (result.Started == 0)
+                return BadRequest(new { message = $"Không bắt đầu được mẻ nào. {string.Join(" | ", result.Errors)}", errors = result.Errors });
 
             var product = await _productService.GetByIdAsync(dto.ProductId);
             string productName = product?.Name ?? "Món ăn";
@@ -910,7 +913,18 @@ namespace MenuGoBE.Controllers
                 timestamp = DateTime.UtcNow
             });
 
-            return Ok(new { message = "Cập nhật trạng thái mẻ thành công" });
+            if (result.Errors.Count > 0)
+            {
+                return Ok(new
+                {
+                    message = $"Đã bắt đầu {result.Started} món, còn {result.Errors.Count} món chưa bắt đầu được. {string.Join(" | ", result.Errors)}",
+                    started = result.Started,
+                    failed = result.Errors.Count,
+                    errors = result.Errors
+                });
+            }
+
+            return Ok(new { message = "Cập nhật trạng thái mẻ thành công", started = result.Started, failed = 0 });
         }
 
         // ===== ORDER ASSIGNMENT ENDPOINTS =====

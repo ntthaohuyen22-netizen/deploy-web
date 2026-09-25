@@ -642,6 +642,7 @@ namespace MenuGoBE.Service
                 }
 
                 order.Status = "Paid";
+                await _repo.UpdateAsync(order);
 
                 var hasSuccessPayment = await _paymentRepo.HasSuccessPaymentAsync(order.Id);
                 if (!hasSuccessPayment && paymentMethod == "Cash")
@@ -669,19 +670,20 @@ namespace MenuGoBE.Service
                 }
 
                 var childOrders = await _repo.GetChildOrdersWithDetailsAsync(order.Id);
+                var childTableIds = childOrders.Where(c => c.TableId > 0).Select(c => c.TableId).Distinct().ToList();
+                var childTables = await _tableRepo.GetByIdsAsync(childTableIds);
+                var childTableDict = childTables.ToDictionary(t => t.Id);
+
                 foreach (var child in childOrders)
                 {
                     if (child.Status == "Active")
                     {
                         child.Status = "Paid";
-                        if (child.TableId > 0)
+                        await _repo.UpdateAsync(child);
+                        if (child.TableId > 0 && childTableDict.TryGetValue(child.TableId, out var childTable))
                         {
-                            var childTable = await _tableRepo.GetByIdAsync(child.TableId);
-                            if (childTable != null)
-                            {
-                                childTable.Status = "Cleaning";
-                                paidTableIds.Add(childTable.Id);
-                            }
+                            childTable.Status = "Cleaning";
+                            paidTableIds.Add(childTable.Id);
                         }
                     }
                 }
@@ -861,9 +863,9 @@ namespace MenuGoBE.Service
             return _mapper.Map<List<OrderViewDto>>(orders);
         }
 
-        public async Task<List<OrderViewDto>> GetPaidOrdersByBranchAsync(long branchId)
+        public async Task<List<OrderViewDto>> GetPaidOrdersByBranchAsync(long branchId, DateTime? startDate = null, DateTime? endDate = null)
         {
-            var orders = await _repo.GetPaidOrdersByBranchAsync(branchId);
+            var orders = await _repo.GetPaidOrdersByBranchAsync(branchId, startDate, endDate);
             var dtos = _mapper.Map<List<OrderViewDto>>(orders);
 
             var creatorIds = orders.Where(o => o.CreatedBy.HasValue).Select(o => o.CreatedBy!.Value).Distinct().ToList();
