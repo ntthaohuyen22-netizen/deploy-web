@@ -16,10 +16,23 @@ namespace MenuGoBE.Service
 
         public PhotoService(IOptions<CloudinarySettings> config)
         {
+            var settings = config.Value;
+            var cloudName = settings.CloudName.Trim().Trim('"');
+            var apiKey = settings.ApiKey.Trim().Trim('"');
+            var apiSecret = settings.ApiSecret.Trim().Trim('"');
+
+            if (string.IsNullOrWhiteSpace(cloudName) ||
+                string.IsNullOrWhiteSpace(apiKey) ||
+                string.IsNullOrWhiteSpace(apiSecret))
+            {
+                throw new InvalidOperationException(
+                    "CloudinarySettings must contain CloudName, ApiKey, and ApiSecret.");
+            }
+
             var acc = new Account(
-                config.Value.CloudName,
-                config.Value.ApiKey,
-                config.Value.ApiSecret
+                cloudName,
+                apiKey,
+                apiSecret
             );
 
             _cloudinary = new Cloudinary(acc);
