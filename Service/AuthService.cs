@@ -38,6 +38,11 @@ namespace MenuGoBE.Service
 
         public async Task<object> LoginAsync(LoginDto dto)
         {
+            if (dto == null)
+            {
+                throw new ArgumentNullException(nameof(dto));
+            }
+
             var account = await _accountRepository.GetAccountByEmailAsync(dto.Email.Trim().ToLower());
 
             if (account == null)
@@ -113,7 +118,13 @@ namespace MenuGoBE.Service
 
         private string GenerateJwtToken(Account account, List<string> roles, List<long> branchIds)
         {
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+            var jwtKey = _configuration["Jwt:Key"];
+            if (string.IsNullOrWhiteSpace(jwtKey))
+            {
+                throw new InvalidOperationException("JWT signing key is not configured.");
+            }
+
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
             var claims = new List<Claim>

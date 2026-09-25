@@ -350,10 +350,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<MenuGoBE.Hubs.NotificationHub>("/notificationHub");
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
-   .AllowAnonymous()
-   .WithTags("Health");
-
 // Tự động áp dụng EF Core Migrations khi ứng dụng khởi chạy
 using (var scope = app.Services.CreateScope())
 {

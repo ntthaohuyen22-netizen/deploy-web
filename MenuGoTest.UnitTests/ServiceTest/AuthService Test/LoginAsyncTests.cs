@@ -24,6 +24,12 @@ public class LoginAsyncTests
     }
 
     [Fact]
+    public async Task ThrowsArgumentNull_WhenDtoIsNull()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _service.LoginAsync(null!));
+    }
+
+    [Fact]
     public async Task ThrowsUnauthorized_WhenEmailNotFound()
     {
         var dto = new LoginDto { Email = "notexist@test.com", Password = "123456" };
