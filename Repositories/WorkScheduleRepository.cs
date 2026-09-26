@@ -41,11 +41,31 @@ namespace MenuGoBE.Repositories
             await _context.WorkSchedules.AddAsync(entity);
         }
 
+        #region Cập nhật lịch làm việc
         public Task UpdateAsync(WorkSchedule entity)
         {
-            _context.WorkSchedules.Update(entity);
+            // Kiểm tra xem entity đã được DbContext theo dõi chưa
+            var tracked = _context.WorkSchedules.Local.FirstOrDefault(e => e.Id == entity.Id);
+            if (tracked != null)
+            {
+                _context.Entry(tracked).CurrentValues.SetValues(entity);
+            }
+            else
+            {
+                // Tạm thời ngắt navigation để tránh lỗi xung đột IdentityMap của Shift/Account
+                var shift = entity.Shift;
+                var account = entity.Account;
+                entity.Shift = null!;
+                entity.Account = null!;
+
+                _context.WorkSchedules.Update(entity);
+
+                entity.Shift = shift;
+                entity.Account = account;
+            }
             return Task.CompletedTask;
         }
+        #endregion
 
         public async Task DeleteAsync(long id)
         {
@@ -100,7 +120,6 @@ namespace MenuGoBE.Repositories
         {
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
-                .AsNoTracking()
                 .Where(ws => ws.CheckInAt != null && ws.CheckOutAt == null)
                 .ToListAsync();
         }
@@ -109,7 +128,6 @@ namespace MenuGoBE.Repositories
         {
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
-                .AsNoTracking()
                 .Where(ws => accountIds.Contains(ws.AccountId)
                           && ws.CheckInAt == null
                           && (ws.Status.ToUpper() == "APPROVED" || ws.Status.ToUpper() == "PENDING" || ws.Status.ToUpper() == "SCHEDULED"))
@@ -120,7 +138,6 @@ namespace MenuGoBE.Repositories
         {
             return await _context.WorkSchedules
                 .Include(ws => ws.Shift)
-                .AsNoTracking()
                 .Where(ws => ws.CheckInAt == null
                           && ws.Status != "ABSENT"
                           && ws.Status != "Absent"

@@ -21,6 +21,7 @@ namespace MenuGoBE.Service
             _hubContext = hubContext;
         }
 
+        #region Vòng lặp chạy ngầm tự động checkout và điểm danh vắng
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("AutoCheckoutService started. Waiting 10s before first run.");
@@ -32,7 +33,6 @@ namespace MenuGoBE.Service
                 {
                     // Dọn dẹp tự động check-out cho các ca đã hết hạn
                     await ProcessAutoCheckoutsAsync();
-                    await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -42,8 +42,19 @@ namespace MenuGoBE.Service
                 {
                     _logger.LogError(ex, "Error occurred during AutoCheckoutService execution.");
                 }
+
+                // Luôn delay 10 phút trước lần quét tiếp theo kể cả khi gặp lỗi
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
+        #endregion
 
         private async Task ProcessAutoCheckoutsAsync()
         {
@@ -71,7 +82,6 @@ namespace MenuGoBE.Service
                 if (shiftEndLocal <= localNow)
                 {
                     ws.Status = "ABSENT";
-                    await _repo.UpdateAsync(ws);
                     _logger.LogInformation($"Auto-Absent: Marked ScheduleId: {ws.Id}, AccountId: {ws.AccountId} as ABSENT (expired at {shiftEndLocal})");
                     hasChanges = true;
                 }
@@ -118,7 +128,6 @@ namespace MenuGoBE.Service
                                 ws.ActualHours = WorkScheduleService.CalculateBoundedActualHours(ws);
                             }
                             
-                            await _repo.UpdateAsync(ws);
                             _logger.LogInformation($"Auto-Transition: Checked-out AccountId: {ws.AccountId}, ScheduleId: {ws.Id} at {checkOutTimeUtc}");
 
                             // Auto-unassign tất cả bàn của nhân viên khi chuyển ca
@@ -132,7 +141,6 @@ namespace MenuGoBE.Service
                             nextSchedule.CheckInAt = nextShiftStartUtc;
                             nextSchedule.Status = "Working";
                             
-                            await _repo.UpdateAsync(nextSchedule);
                             _logger.LogInformation($"Auto-Transition: Checked-in AccountId: {nextSchedule.AccountId}, ScheduleId: {nextSchedule.Id} at {nextShiftStartUtc}");
                             
                             hasChanges = true;
@@ -151,7 +159,6 @@ namespace MenuGoBE.Service
                                 ws.ActualHours = WorkScheduleService.CalculateBoundedActualHours(ws);
                             }
                             
-                            await _repo.UpdateAsync(ws);
                             _logger.LogInformation($"Auto-ForcedCheckout: Checked-out AccountId: {ws.AccountId}, ScheduleId: {ws.Id} at {forcedCheckOutTimeUtc}");
 
                             // Auto-unassign tất cả bàn của nhân viên khi ép checkout

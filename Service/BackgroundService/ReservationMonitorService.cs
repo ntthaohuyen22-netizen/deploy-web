@@ -238,10 +238,18 @@ public class ReservationMonitorService : Microsoft.Extensions.Hosting.Background
                             var table = orderToRescue.Table;
                             if (table != null && (table.Status == "Occupied" || table.Status == "Serving"))
                             {
-                                // Cố gắng cứu hộ bằng cách tìm bàn trống khác trong cùng khu vực
-                                var emptyTable = await db.Tables
-                                    .Where(t => t.AreaId == table.AreaId && (t.Status == "Empty" || t.Status == "Available"))
-                                    .FirstOrDefaultAsync(stoppingToken);
+                                // Nếu đơn đặt nhiều bàn (bàn ghép), không tự động chuyển từng bàn lẻ tẻ vì sẽ làm mất vị trí liền kề.
+                                // -> Chuyển thẳng xuống báo động đỏ yêu cầu xếp tay.
+                                bool canAutoTransfer = allRelatedOrders.Count == 1;
+                                MenuGoBE.Models.Table? emptyTable = null;
+
+                                if (canAutoTransfer)
+                                {
+                                    // Cố gắng cứu hộ bằng cách tìm bàn trống khác trong cùng khu vực
+                                    emptyTable = await db.Tables
+                                        .Where(t => t.AreaId == table.AreaId && (t.Status == "Empty" || t.Status == "Available"))
+                                        .FirstOrDefaultAsync(stoppingToken);
+                                }
 
                                 if (emptyTable != null)
                                 {
@@ -268,12 +276,14 @@ public class ReservationMonitorService : Microsoft.Extensions.Hosting.Background
                                 }
                                 else
                                 {
-                                    // Không tìm thấy bàn trống thay thế
+                                    // Không tìm thấy bàn trống thay thế HOẶC đơn nhiều bàn
                                     if (!_warnedReservationIds.Contains(warnRes.Id))
                                     {
                                         var area = await db.Areas.FirstOrDefaultAsync(a => a.Id == table.AreaId, stoppingToken);
                                         long branchId = area?.BranchId ?? 0;
 
+                                        string warningReason = canAutoTransfer ? "KHÔNG còn bàn trống tương đương để đổi!" : "hệ thống KHÔNG hỗ trợ tự dời bàn lẻ tẻ cho đơn ghép nhiều bàn!";
+                                        
                                         await _hubContext.Clients.All.SendAsync("TableConflictWarning", new
                                         {
                                             ReservationId = warnRes.Id,
@@ -281,7 +291,7 @@ public class ReservationMonitorService : Microsoft.Extensions.Hosting.Background
                                             TableName = table.Name,
                                             BranchId = branchId,
                                             ReservationTime = warnRes.ReservationTime,
-                                            Message = $"KHẨN CẤP: {table.Name} (thuộc đơn {warnRes.TableCount} bàn) đã được đặt lúc {warnRes.ReservationTime:HH:mm} nhưng hiện vẫn đang có khách ngồi và KHÔNG còn bàn trống để đổi! Vui lòng tự sắp xếp."
+                                            Message = $"KHẨN CẤP: {table.Name} (thuộc đơn {warnRes.TableCount} bàn) đã được đặt lúc {warnRes.ReservationTime:HH:mm} nhưng hiện vẫn đang có khách ngồi và {warningReason} Vui lòng tự sắp xếp."
                                         });
                                         _warnedReservationIds.Add(warnRes.Id);
                                     }
@@ -345,9 +355,6 @@ public class ReservationMonitorService : Microsoft.Extensions.Hosting.Background
                 {
                     await _hubContext.Clients.All.SendAsync("ReceiveTableListUpdate", stoppingToken);
                 }
-
-                // Fixed 5-minute interval check
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -356,6 +363,16 @@ public class ReservationMonitorService : Microsoft.Extensions.Hosting.Background
             catch (Exception ex)
             {
                 Console.WriteLine($"ReservationMonitorService Error: {ex.Message}");
+            }
+
+            // Luôn delay 5 phút trước lần quét kế tiếp kể cả khi có lỗi
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
         }
     }

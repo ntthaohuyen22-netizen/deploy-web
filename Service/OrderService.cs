@@ -502,9 +502,64 @@ namespace MenuGoBE.Service
 
                 var order = orderWithDetails;
 
+                var childOrdersCheck = await _repo.GetChildOrdersWithDetailsAsync(order.Id);
+                int effectiveItemsCount = order.OrderDetails.Count(od => od.Status != "Cancelled" && (od.Quantity - od.ReturnedQuantity) > 0);
+                foreach (var child in childOrdersCheck)
+                {
+                    effectiveItemsCount += child.OrderDetails.Count(od => od.Status != "Cancelled" && (od.Quantity - od.ReturnedQuantity) > 0);
+                }
+
+                if (effectiveItemsCount == 0)
+                {
+                    order.Status = "Cancelled";
+                    foreach (var detail in order.OrderDetails)
+                    {
+                        if (detail.Status != "Cancelled") detail.Status = "Cancelled";
+                    }
+
+                    if (order.TableId > 0)
+                    {
+                        var table = await _tableRepo.GetByIdAsync(order.TableId);
+                        if (table != null)
+                        {
+                            table.Status = "Cleaning";
+                            paidTableIds.Add(table.Id);
+                        }
+                    }
+
+                    var childTableIdsForCancel = childOrdersCheck.Where(c => c.TableId > 0).Select(c => c.TableId).Distinct().ToList();
+                    var childTablesForCancel = await _tableRepo.GetByIdsAsync(childTableIdsForCancel);
+                    var childTableCancelDict = childTablesForCancel.ToDictionary(t => t.Id);
+
+                    foreach (var child in childOrdersCheck)
+                    {
+                        if (child.Status == "Active")
+                        {
+                            child.Status = "Cancelled";
+                            foreach (var detail in child.OrderDetails)
+                            {
+                                if (detail.Status != "Cancelled") detail.Status = "Cancelled";
+                            }
+                            if (child.TableId > 0 && childTableCancelDict.TryGetValue(child.TableId, out var childTable))
+                            {
+                                if (!paidTableIds.Contains(childTable.Id))
+                                {
+                                    childTable.Status = "Cleaning";
+                                    paidTableIds.Add(childTable.Id);
+                                }
+                            }
+                        }
+                    }
+
+                    await _repo.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    return paidTableIds;
+                }
+
                 if (paymentMethod == "Cash" || dto != null)
                 {
                     await PreparePaymentAsync(orderId, dto, paymentMethod);
+                    _repo.ClearChangeTracker();
                     order = await _repo.GetActiveOrderByIdWithDetailsAsync(orderId);
                     if (order == null) return paidTableIds;
                 }
@@ -531,6 +586,7 @@ namespace MenuGoBE.Service
                 if (orderDetailIdsForBonus.Count > 0 && _pointConfig.EarnRate_SpendAmount > 0)
                 {
                     var delayedRecords = await _context.LeftoverRecords
+                        .AsNoTracking()
                         .Include(l => l.OrderDetail)
                         .ThenInclude(od => od.Product)
                         .Where(l => l.Type == LeftoverType.Return
@@ -642,7 +698,6 @@ namespace MenuGoBE.Service
                 }
 
                 order.Status = "Paid";
-                await _repo.UpdateAsync(order);
 
                 var hasSuccessPayment = await _paymentRepo.HasSuccessPaymentAsync(order.Id);
                 if (!hasSuccessPayment && paymentMethod == "Cash")
@@ -679,7 +734,6 @@ namespace MenuGoBE.Service
                     if (child.Status == "Active")
                     {
                         child.Status = "Paid";
-                        await _repo.UpdateAsync(child);
                         if (child.TableId > 0 && childTableDict.TryGetValue(child.TableId, out var childTable))
                         {
                             childTable.Status = "Cleaning";
@@ -851,7 +905,6 @@ namespace MenuGoBE.Service
                 }
             }
 
-            await _repo.UpdateAsync(orderWithDetails);
             await _repo.SaveChangesAsync();
 
             return true;
@@ -869,15 +922,19 @@ namespace MenuGoBE.Service
             var dtos = _mapper.Map<List<OrderViewDto>>(orders);
 
             var creatorIds = orders.Where(o => o.CreatedBy.HasValue).Select(o => o.CreatedBy!.Value).Distinct().ToList();
+            var accounts = new Dictionary<long, string>();
             if (creatorIds.Any())
             {
-                var accounts = await _context.Accounts.Where(a => creatorIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name);
-                foreach (var dto in dtos)
+                accounts = await _context.Accounts.Where(a => creatorIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name);
+            }
+
+
+
+            foreach (var dto in dtos)
+            {
+                if (dto.CreatedBy.HasValue && accounts.TryGetValue(dto.CreatedBy.Value, out var name))
                 {
-                    if (dto.CreatedBy.HasValue && accounts.TryGetValue(dto.CreatedBy.Value, out var name))
-                    {
-                        dto.CreatedByName = name;
-                    }
+                    dto.CreatedByName = name;
                 }
             }
 

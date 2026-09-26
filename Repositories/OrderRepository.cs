@@ -49,7 +49,6 @@ namespace MenuGoBE.Repositories
         public async Task<List<Order>> GetChildOrdersWithDetailsAsync(long fatherId)
         {
             return await _context.Orders
-                .AsNoTracking()
                 .Where(o => o.FatherId == fatherId && (o.Status == "Active" || o.Status == "Reserved"))
                 .Include(o => o.OrderDetails)
                     .ThenInclude(od => od.Product)
@@ -60,7 +59,6 @@ namespace MenuGoBE.Repositories
         public async Task<Order?> GetActiveOrderByTableIdAsync(long tableId)
         {
             var activeOrders = await _context.Orders
-                .AsNoTracking()
                 .Where(o => o.TableId == tableId && (o.Status == "Active" || o.Status == "Internal"))
                 .Include(o => o.OrderDetails)
                     .ThenInclude(od => od.Product)
@@ -77,7 +75,6 @@ namespace MenuGoBE.Repositories
         public async Task<Order?> GetActiveOrderByIdWithDetailsAsync(long orderId)
         {
             return await _context.Orders
-                .AsNoTracking()
                 .Where(o => o.Id == orderId && o.Status == "Active")
                 .Include(o => o.OrderDetails)
                     .ThenInclude(od => od.Product)
@@ -130,20 +127,30 @@ namespace MenuGoBE.Repositories
                 .FirstOrDefaultAsync();
         }
 
+        #region Lấy danh sách hóa đơn đã thanh toán theo chi nhánh và khoảng thời gian
         public async Task<List<Order>> GetPaidOrdersByBranchAsync(long branchId, DateTime? startDate = null, DateTime? endDate = null)
         {
             var query = _context.Orders
                 .AsNoTracking()
-                .Where(o => (branchId <= 0 || (o.Table != null && o.Table.Area != null && o.Table.Area.BranchId == branchId)) && o.Status == "Paid");
+                .Where(o => (branchId <= 0 || (o.Table != null && o.Table.Area != null && o.Table.Area.BranchId == branchId)) 
+                         && o.Status == "Paid" 
+                         && o.FatherId == null
+                         && !(o.TotalAmount == 0 
+                              && !o.OrderDetails.Any(od => (od.Quantity - od.ReturnedQuantity) > 0) 
+                              && !o.ChildOrders.Any(c => c.OrderDetails.Any(od => (od.Quantity - od.ReturnedQuantity) > 0))));
 
+            // Lọc theo mốc thời gian bắt đầu (UTC+7)
             if (startDate.HasValue)
             {
-                query = query.Where(o => o.CreatedAt >= startDate.Value);
+                var startUtc = DateTime.SpecifyKind(startDate.Value.Date.AddHours(-7), DateTimeKind.Utc);
+                query = query.Where(o => o.CreatedAt >= startUtc);
             }
 
+            // Lọc theo mốc thời gian kết thúc (UTC+7)
             if (endDate.HasValue)
             {
-                query = query.Where(o => o.CreatedAt <= endDate.Value);
+                var endUtc = DateTime.SpecifyKind(endDate.Value.Date.AddDays(1).AddHours(-7).AddTicks(-1), DateTimeKind.Utc);
+                query = query.Where(o => o.CreatedAt <= endUtc);
             }
 
             return await query
@@ -151,12 +158,15 @@ namespace MenuGoBE.Repositories
                     .ThenInclude(od => od.Product)
                 .Include(o => o.Table)
                     .ThenInclude(t => t.Area)
+                .Include(o => o.ChildOrders)
+                    .ThenInclude(c => c.Table)
                 .Include(o => o.Customer)
                 .Include(o => o.Voucher)
                 .Include(o => o.Payments)
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync();
         }
+        #endregion
 
         public async Task<List<Order>> GetReturnableOrdersByBranchAsync(long branchId)
         {
